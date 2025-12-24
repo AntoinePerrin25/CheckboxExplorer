@@ -85,7 +85,17 @@
         "language": "ruby",
         "path": "./snippets/checkboxes.code-snippets"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Checkbox Display",
+      "properties": {
+        "checkbox-display.showCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show 'Click to toggle' CodeLens above checkbox patterns"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

@@ -57,6 +57,12 @@ class CheckboxCodeLensProvider implements vscode.CodeLensProvider {
 	}
 
 	provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] | Thenable<vscode.CodeLens[]> {
+		const showCodeLens = vscode.workspace.getConfiguration('checkbox-display').get<boolean>('showCodeLens', true);
+		
+		if (!showCodeLens) {
+			return [];
+		}
+
 		const codeLenses: vscode.CodeLens[] = [];
 		const commentSyntax = getCommentSyntax(document.languageId);
 		const checkboxRegex = getCheckboxRegex(commentSyntax);
