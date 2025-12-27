@@ -7,10 +7,11 @@
 - Added option to display "Click to toggle" Codelens disposable visibility
 - Updated decorations to show circled numbers for carousel values and keep ☑/☐ for binary cases
 - Added user-configurable colors: `checkbox-display.checkedColor`, `checkbox-display.uncheckedColor`, and `checkbox-display.carouselColor`
+- Value validation with diagnostics: warns when variable value doesn't match carousel values
+- Auto-save on toggle: added `checkbox-display.autoSave` setting (default: false)
+- Auto-save on toggle option
 
 ### (TODO 0.0.3)
-- Feature 7: Value validation with diagnostics
-- Feature 8: Auto-save on toggle (disabled by default)
 - Feature 11: Project management with Sidebar explorer
 
 

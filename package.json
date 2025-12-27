@@ -106,8 +106,18 @@
         },
         "checkbox-display.carouselColor": {
           "type": "string",
-          "default": "#4CAF50",
+          "default": "#FF9800",
           "description": "Color for carousel number symbols (①②③...)"
+        },
+        "checkbox-display.validateValues": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show warning diagnostics when variable value doesn't match any carousel value"
+        },
+        "checkbox-display.autoSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically save the file after toggling a checkbox"
         }
       }
     }

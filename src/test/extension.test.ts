@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { extractVariableValue, getCommentSyntax, getCheckboxRegex, extractCheckboxValues } from '../extension';
+import { extractVariableValue, getCommentSyntax, getCheckboxRegex, extractCheckboxValues, validateCheckboxValue } from '../extension';
 
 suite('Checkbox Display Extension Tests', () => {
 	suite('getCommentSyntax', () => {
@@ -167,6 +167,112 @@ suite('Checkbox Display Extension Tests', () => {
 			assert.ok(match);
 			const values = extractCheckboxValues(match!);
 			assert.deepStrictEqual(values, ['"a.txt"', '"b.txt"', '"c.txt"']);
+		});
+	});
+
+	suite('Value Validation', () => {
+		test('should validate correct value in carousel', () => {
+			const line = 'mode = two # [CB]: one|two|three';
+			const validation = validateCheckboxValue(line, '#');
+			assert.strictEqual(validation.isValid, true);
+		});
+
+		test('should detect invalid value in carousel', () => {
+			const line = 'mode = invalid # [CB]: one|two|three';
+			const validation = validateCheckboxValue(line, '#');
+			assert.strictEqual(validation.isValid, false);
+			assert.ok(validation.errorMessage?.includes('invalid'));
+			assert.ok(validation.errorMessage?.includes('one, two, three'));
+		});
+
+		test('should pass validation for binary checkbox with valid value', () => {
+			const line = 'enabled = true # [CB]: false|true';
+			const validation = validateCheckboxValue(line, '#');
+			assert.strictEqual(validation.isValid, true);
+		});
+
+		test('should fail validation for binary checkbox with invalid value', () => {
+			const line = 'enabled = maybe # [CB]: false|true';
+			const validation = validateCheckboxValue(line, '#');
+			assert.strictEqual(validation.isValid, false);
+			assert.ok(validation.errorMessage?.includes('maybe'));
+		});
+
+		test('should pass validation for line without checkbox', () => {
+			const line = 'normalVariable = 42';
+			const validation = validateCheckboxValue(line, '#');
+			assert.strictEqual(validation.isValid, true);
+		});
+
+		test('should pass validation for line without variable value', () => {
+			const line = '# [CB]: one|two|three';
+			const validation = validateCheckboxValue(line, '#');
+			assert.strictEqual(validation.isValid, true);
+		});
+	});
+
+	suite('Auto-save (Configuration)', () => {
+		test('should have autoSave config option', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const autoSave = config.get<boolean>('autoSave');
+			// Config should either have a default or be undefined (which defaults to false)
+			assert.ok(autoSave !== undefined || config.get('autoSave') === false);
+		});
+
+		test('should default autoSave to false', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const autoSave = config.get<boolean>('autoSave', false);
+			assert.strictEqual(autoSave, false);
+		});
+
+		test('should have validateValues config option', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const validateValues = config.get<boolean>('validateValues');
+			assert.ok(validateValues !== undefined || config.get('validateValues') === true);
+		});
+
+		test('should default validateValues to true', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const validateValues = config.get<boolean>('validateValues', true);
+			assert.strictEqual(validateValues, true);
+		});
+	});
+
+	suite('Feature 2: Color Configuration', () => {
+		test('should have checkedColor config option', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const color = config.get<string>('checkedColor');
+			assert.ok(color !== undefined || config.get('checkedColor') === '#4CAF50');
+		});
+
+		test('should default checkedColor to green', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const color = config.get<string>('checkedColor', '#4CAF50');
+			assert.strictEqual(color, '#4CAF50');
+		});
+
+		test('should have uncheckedColor config option', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const color = config.get<string>('uncheckedColor');
+			assert.ok(color !== undefined || config.get('uncheckedColor') === '#757575');
+		});
+
+		test('should default uncheckedColor to gray', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const color = config.get<string>('uncheckedColor', '#757575');
+			assert.strictEqual(color, '#757575');
+		});
+
+		test('should have carouselColor config option', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const color = config.get<string>('carouselColor');
+			assert.ok(color !== undefined || config.get('carouselColor') === '#FF9800');
+		});
+
+		test('should default carouselColor to orange', async () => {
+			const config = vscode.workspace.getConfiguration('checkbox-display');
+			const color = config.get<string>('carouselColor', '#FF9800');
+			assert.strictEqual(color, '#FF9800');
 		});
 	});
 

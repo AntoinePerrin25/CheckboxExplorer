@@ -57,6 +57,33 @@ export function extractVariableValue(lineText: string, commentSyntax: string = '
 	return null;
 }
 
+export function validateCheckboxValue(lineText: string, commentSyntax: string = '#'): { isValid: boolean; errorMessage?: string } {
+	const varValue = extractVariableValue(lineText, commentSyntax);
+	if (!varValue) {
+		return { isValid: true }; // No variable, no validation needed
+	}
+
+	const checkboxRegex = getCheckboxRegex(commentSyntax);
+	checkboxRegex.lastIndex = 0;
+	const cbMatch = checkboxRegex.exec(lineText);
+	
+	if (!cbMatch) {
+		return { isValid: true }; // No checkbox pattern, no validation needed
+	}
+
+	const values = extractCheckboxValues(cbMatch);
+	const isValid = values.includes(varValue);
+
+	if (!isValid) {
+		return {
+			isValid: false,
+			errorMessage: `Variable value "${varValue}" does not match any carousel value (${values.join(', ')})`
+		};
+	}
+
+	return { isValid: true };
+}
+
 class CheckboxCodeLensProvider implements vscode.CodeLensProvider {
 	private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
 	public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
@@ -107,6 +134,10 @@ export function activate(context: vscode.ExtensionContext) {
 	const checkedColor = config.get<string>('checkedColor', '#4CAF50');
 	const uncheckedColor = config.get<string>('uncheckedColor', '#757575');
 	const carouselColor = config.get<string>('carouselColor', '#FF9800');
+
+	// Create diagnostics collection for value validation
+	const diagnosticsCollection = vscode.languages.createDiagnosticCollection('checkbox-display');
+	context.subscriptions.push(diagnosticsCollection);
 
 	checkedDecorationType = vscode.window.createTextEditorDecorationType({
 		before: {
@@ -214,12 +245,14 @@ export function activate(context: vscode.ExtensionContext) {
 		const editor = vscode.window.activeTextEditor;
 		if (editor && event.document === editor.document) {
 			updateDecorations(editor);
+			updateDiagnostics(editor.document, diagnosticsCollection);
 			codeLensProvider.refresh();
 		}
 	}, null, context.subscriptions);
 
 	if (vscode.window.activeTextEditor) {
 		updateDecorations(vscode.window.activeTextEditor);
+		updateDiagnostics(vscode.window.activeTextEditor.document, diagnosticsCollection);
 	}
 	const toggleAtLineCommand = vscode.commands.registerCommand('checkbox-display.toggleCheckboxAtLine', (line: number) => {
 		const editor = vscode.window.activeTextEditor;
@@ -254,6 +287,11 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(codeLensProviderDisposable);
 	context.subscriptions.push(checkedDecorationType);
 	context.subscriptions.push(uncheckedDecorationType);
+
+	// Update diagnostics when a document is opened
+	vscode.workspace.onDidOpenTextDocument(document => {
+		updateDiagnostics(document, diagnosticsCollection);
+	}, null, context.subscriptions);
 }
 
 export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: number) {
@@ -288,8 +326,55 @@ export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: numb
 
 		editor.edit(editBuilder => {
 			editBuilder.replace(line.range, newText);
+		}).then(() => {
+			// Auto-save if enabled
+			const autoSave = vscode.workspace.getConfiguration('checkbox-display').get<boolean>('autoSave', false);
+			if (autoSave) {
+				editor.document.save();
+			}
 		});
 	}
+}
+
+function updateDiagnostics(document: vscode.TextDocument, diagnosticsCollection: vscode.DiagnosticCollection) {
+	const validateValues = vscode.workspace.getConfiguration('checkbox-display').get<boolean>('validateValues', true);
+	
+	if (!validateValues) {
+		diagnosticsCollection.set(document.uri, []);
+		return;
+	}
+
+	const diagnostics: vscode.Diagnostic[] = [];
+	const commentSyntax = getCommentSyntax(document.languageId);
+	const checkboxRegex = getCheckboxRegex(commentSyntax);
+
+	for (let i = 0; i < document.lineCount; i++) {
+		const lineText = document.lineAt(i).text;
+		checkboxRegex.lastIndex = 0;
+		const cbMatch = checkboxRegex.exec(lineText);
+		
+		if (cbMatch) {
+			const validation = validateCheckboxValue(lineText, commentSyntax);
+			if (!validation.isValid && validation.errorMessage) {
+				const varValue = extractVariableValue(lineText, commentSyntax);
+				if (varValue) {
+					const varIndex = lineText.indexOf(varValue);
+					if (varIndex !== -1) {
+						const range = new vscode.Range(i, varIndex, i, varIndex + varValue.length);
+						const diagnostic = new vscode.Diagnostic(
+							range,
+							validation.errorMessage,
+							vscode.DiagnosticSeverity.Warning
+						);
+						diagnostic.source = 'checkbox-display';
+						diagnostics.push(diagnostic);
+					}
+				}
+			}
+		}
+	}
+
+	diagnosticsCollection.set(document.uri, diagnostics);
 }
 
 function updateDecorations(editor: vscode.TextEditor) {
