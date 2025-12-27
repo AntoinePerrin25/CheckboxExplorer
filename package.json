@@ -2,7 +2,7 @@
   "name": "checkbox-display",
   "displayName": "Checkbox Display",
   "description": "Display interactive checkboxes in VS Code editor",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "engines": {
     "vscode": "^1.107.0"
   },
@@ -93,6 +93,21 @@
           "type": "boolean",
           "default": true,
           "description": "Show 'Click to toggle' CodeLens above checkbox patterns"
+        },
+        "checkbox-display.uncheckedColor": {
+          "type": "string",
+          "default": "#757575",
+          "description": "Color for unchecked checkbox symbol (☐)"
+        },
+        "checkbox-display.checkedColor": {
+          "type": "string",
+          "default": "#4CAF50",
+          "description": "Color for checked checkbox symbol (☑)"
+        },
+        "checkbox-display.carouselColor": {
+          "type": "string",
+          "default": "#4CAF50",
+          "description": "Color for carousel number symbols (①②③...)"
         }
       }
     }

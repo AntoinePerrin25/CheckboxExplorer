@@ -2,8 +2,8 @@
 #include <stdlib.h>
 
 int main(void)
-{ 
-    const char message = "Hello, World!"; // [CB]:"Hello, World!";|"Goodbye, World!";
+{
+    char message[] = "Hello, World!"; // [CB]:"Hello, World!";|"Goodbye, World!";
     printf("%s\n", message);
 
     return 0;

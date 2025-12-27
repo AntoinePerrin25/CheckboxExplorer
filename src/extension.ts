@@ -3,6 +3,10 @@ import * as vscode from 'vscode';
 let checkedDecorationType: vscode.TextEditorDecorationType;
 let uncheckedDecorationType: vscode.TextEditorDecorationType;
 
+// Circled number characters for carousel display (①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳)
+const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲', '⑳'];
+const decorationMap: Map<number, vscode.TextEditorDecorationType> = new Map();
+
 export function getCommentSyntax(languageId: string): string {
 	const commentMap: { [key: string]: string } = {
 		'python': '#',
@@ -35,7 +39,12 @@ function escapeRegex(str: string): string {
 
 export function getCheckboxRegex(commentSyntax: string): RegExp {
 	const escaped = escapeRegex(commentSyntax);
-	return new RegExp(`${escaped}\\s*\\[CB\\]:\\s*([^|]+)\\|([^\\n]+)`, 'g');
+	return new RegExp(`${escaped}\\s*\\[CB\\]:\\s*([^|]+(?:\\|[^|\\n]+)*)`, 'g');
+}
+
+export function extractCheckboxValues(match: RegExpExecArray): string[] {
+	const valuesString = match[1];
+	return valuesString.split('|').map(v => v.trim());
 }
 
 export function extractVariableValue(lineText: string, commentSyntax: string = '#'): string | null {
@@ -75,9 +84,8 @@ class CheckboxCodeLensProvider implements vscode.CodeLensProvider {
 			if (cbMatch) {
 				const range = new vscode.Range(i, 0, i, 0);
 				const varValue = extractVariableValue(lineText, commentSyntax);
-				const val1 = cbMatch[1].trim();
-				const val2 = cbMatch[2].trim();
-				const isChecked = varValue === val1;
+				const values = extractCheckboxValues(cbMatch);
+				const isChecked = varValue === values[0];
 				const icon = isChecked ? '☑' : '☐';
 				const title = `${icon} Click to toggle`;
 				
@@ -94,12 +102,18 @@ class CheckboxCodeLensProvider implements vscode.CodeLensProvider {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+	// Get colors from configuration
+	const config = vscode.workspace.getConfiguration('checkbox-display');
+	const checkedColor = config.get<string>('checkedColor', '#4CAF50');
+	const uncheckedColor = config.get<string>('uncheckedColor', '#757575');
+	const carouselColor = config.get<string>('carouselColor', '#FF9800');
+
 	checkedDecorationType = vscode.window.createTextEditorDecorationType({
 		before: {
 			contentText: '☑ ',
-			color: '#4CAF50',
+			color: checkedColor,
 			fontWeight: 'bold',
-			textDecoration: 'none; cursor: pointer;'
+			textDecoration: 'none;'
 		},
 		rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 	});
@@ -107,9 +121,9 @@ export function activate(context: vscode.ExtensionContext) {
 	uncheckedDecorationType = vscode.window.createTextEditorDecorationType({
 		before: {
 			contentText: '☐ ',
-			color: '#757575',
+			color: uncheckedColor,
 			fontWeight: 'bold',
-			textDecoration: 'none; cursor: pointer;'
+			textDecoration: 'none;'
 		},
 		rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 	});
@@ -123,9 +137,76 @@ export function activate(context: vscode.ExtensionContext) {
 		codeLensProvider
 	);
 
+	// Create decoration types for circled numbers (1-20)
+	for (let i = 0; i < circledNumbers.length; i++) {
+		const decorType = vscode.window.createTextEditorDecorationType({
+			before: {
+				contentText: circledNumbers[i] + ' ',
+				color: carouselColor,
+				fontWeight: 'bold'
+			},
+			rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+		});
+		decorationMap.set(i, decorType);
+		context.subscriptions.push(decorType);
+	}
+
 	vscode.window.onDidChangeActiveTextEditor(editor => {
 		if (editor) {
 			updateDecorations(editor);
+		}
+	}, null, context.subscriptions);
+
+	vscode.workspace.onDidChangeConfiguration(event => {
+		if (event.affectsConfiguration('checkbox-display')) {
+			// Recreate decorations with new colors
+			checkedDecorationType.dispose();
+			uncheckedDecorationType.dispose();
+			decorationMap.forEach(dec => dec.dispose());
+			decorationMap.clear();
+
+			const newConfig = vscode.workspace.getConfiguration('checkbox-display');
+			const newCheckedColor = newConfig.get<string>('checkedColor', '#4CAF50');
+			const newUncheckedColor = newConfig.get<string>('uncheckedColor', '#757575');
+			const newCarouselColor = newConfig.get<string>('carouselColor', '#FF9800');
+
+			checkedDecorationType = vscode.window.createTextEditorDecorationType({
+				before: {
+					contentText: '☑ ',
+					color: newCheckedColor,
+					fontWeight: 'bold',
+					textDecoration: 'none;'
+				},
+				rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+			});
+
+			uncheckedDecorationType = vscode.window.createTextEditorDecorationType({
+				before: {
+					contentText: '☐ ',
+					color: newUncheckedColor,
+					fontWeight: 'bold',
+					textDecoration: 'none;'
+				},
+				rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+			});
+
+			for (let i = 0; i < circledNumbers.length; i++) {
+				const decorType = vscode.window.createTextEditorDecorationType({
+					before: {
+						contentText: circledNumbers[i] + ' ',
+						color: newCarouselColor,
+						fontWeight: 'bold'
+					},
+					rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+				});
+				decorationMap.set(i, decorType);
+				context.subscriptions.push(decorType);
+			}
+
+			// Refresh all visible editors
+			vscode.window.visibleTextEditors.forEach(editor => {
+				updateDecorations(editor);
+			});
 		}
 	}, null, context.subscriptions);
 
@@ -181,8 +262,8 @@ export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: numb
 	const commentSyntax = getCommentSyntax(editor.document.languageId);
 	const escapedComment = escapeRegex(commentSyntax);
 
-	const cbRegex = new RegExp(`${escapedComment}\\s*\\[CB\\]:\\s*([^|]+)\\|([^\\n]+)`);
-	const varRegex = new RegExp(`(.*)=\\s*(.+?)\\s*(${escapedComment}\\s*\\[CB\\]:\\s*)([^|]+)\\|([^\\n]+)`);
+	const cbRegex = new RegExp(`${escapedComment}\\s*\\[CB\\]:\\s*([^|]+(?:\\|[^|\\n]+)*)`);
+	const varRegex = new RegExp(`(.*)=\\s*(.+?)\\s*(${escapedComment}\\s*\\[CB\\]:\\s*)([^|]+(?:\\|[^|\\n]+)*)`);
 	
 	const cbMatch = lineText.match(cbRegex);
 	const varMatch = lineText.match(varRegex);
@@ -191,10 +272,19 @@ export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: numb
 		const beforeEquals = varMatch[1];
 		const currentValue = varMatch[2].trim();
 		const cbPrefix = varMatch[3];
-		const val1 = varMatch[4].trim();
-		const val2 = varMatch[5].trim();
-		const newValue = currentValue === val1 ? val2 : val1;
-		const newText = `${beforeEquals}= ${newValue} ${cbPrefix}${val1}|${val2}`;
+		const valuesString = varMatch[4];
+		const values = valuesString.split('|').map(v => v.trim());
+		
+		let newValue = values[0];
+		const currentIndex = values.indexOf(currentValue);
+		
+		if (currentIndex !== -1 && currentIndex < values.length - 1) {
+			newValue = values[currentIndex + 1];
+		} else {
+			newValue = values[0];
+		}
+		
+		const newText = `${beforeEquals}= ${newValue} ${cbPrefix}${valuesString}`;
 
 		editor.edit(editBuilder => {
 			editBuilder.replace(line.range, newText);
@@ -205,8 +295,14 @@ export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: numb
 function updateDecorations(editor: vscode.TextEditor) {
 	const checkedDecorations: vscode.DecorationOptions[] = [];
 	const uncheckedDecorations: vscode.DecorationOptions[] = [];
+	const carouselDecorations: Map<number, vscode.DecorationOptions[]> = new Map();
 	const commentSyntax = getCommentSyntax(editor.document.languageId);
 	const checkboxRegex = getCheckboxRegex(commentSyntax);
+
+	// Initialize carousel decoration maps
+	for (let i = 0; i < circledNumbers.length; i++) {
+		carouselDecorations.set(i, []);
+	}
 
 	for (let i = 0; i < editor.document.lineCount; i++) {
 		const lineText = editor.document.lineAt(i).text;
@@ -215,26 +311,52 @@ function updateDecorations(editor: vscode.TextEditor) {
 		
 		if (cbMatch) {
 			const varValue = extractVariableValue(lineText, commentSyntax);
-			const val1 = cbMatch[1].trim();
+			const values = extractCheckboxValues(cbMatch);
 			const cbPattern = `${commentSyntax} [CB]:`;
 			const cbIndex = lineText.indexOf(cbPattern);
 			
 			if (cbIndex !== -1 && varValue) {
 				const startPos = new vscode.Position(i, cbIndex);
 				const endPos = new vscode.Position(i, cbIndex + cbMatch[0].length);
-				const decoration = { range: new vscode.Range(startPos, endPos) };
+				const decoration: vscode.DecorationOptions = { 
+					range: new vscode.Range(startPos, endPos),
+					hoverMessage: new vscode.MarkdownString(`**Values:** ${values.join(' → ')}\n\n**Current:** ${varValue}`)
+				};
 
-				if (varValue === val1) {
-					checkedDecorations.push(decoration);
-				} else {
-					uncheckedDecorations.push(decoration);
+				// For binary (2 values): use ☑/☐
+				if (values.length === 2) {
+					if (varValue === values[0]) {
+						checkedDecorations.push(decoration);
+					} else {
+						uncheckedDecorations.push(decoration);
+					}
+				}
+				// For carousel (3+ values): use circled numbers
+				else if (values.length > 2) {
+					const currentIndex = values.indexOf(varValue);
+					if (currentIndex !== -1 && currentIndex < circledNumbers.length) {
+						const decorList = carouselDecorations.get(currentIndex);
+						if (decorList) {
+							decorList.push(decoration);
+						}
+					}
 				}
 			}
 		}
 	}
 
+	// Apply binary decorations
 	editor.setDecorations(checkedDecorationType, checkedDecorations);
 	editor.setDecorations(uncheckedDecorationType, uncheckedDecorations);
+
+	// Apply carousel decorations
+	for (let i = 0; i < circledNumbers.length; i++) {
+		const decorType = decorationMap.get(i);
+		const decorations = carouselDecorations.get(i);
+		if (decorType && decorations) {
+			editor.setDecorations(decorType, decorations);
+		}
+	}
 }
 
 export function deactivate() {

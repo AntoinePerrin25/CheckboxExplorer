@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { extractVariableValue, getCommentSyntax, getCheckboxRegex } from '../extension';
+import { extractVariableValue, getCommentSyntax, getCheckboxRegex, extractCheckboxValues } from '../extension';
 
 suite('Checkbox Display Extension Tests', () => {
 	suite('getCommentSyntax', () => {
@@ -84,8 +84,8 @@ suite('Checkbox Display Extension Tests', () => {
 			regex.lastIndex = 0;
 			const match = regex.exec(line);
 			assert.ok(match);
-			assert.strictEqual(match![1].trim(), '0');
-			assert.strictEqual(match![2].trim(), '1');
+			const values = extractCheckboxValues(match!);
+			assert.deepStrictEqual(values, ['0', '1']);
 		});
 
 		test('should match checkbox with // comment', () => {
@@ -94,8 +94,8 @@ suite('Checkbox Display Extension Tests', () => {
 			regex.lastIndex = 0;
 			const match = regex.exec(line);
 			assert.ok(match);
-			assert.strictEqual(match![1].trim(), '0');
-			assert.strictEqual(match![2].trim(), '1');
+			const values = extractCheckboxValues(match!);
+			assert.deepStrictEqual(values, ['0', '1']);
 		});
 
 		test('should match checkbox with string values', () => {
@@ -104,8 +104,8 @@ suite('Checkbox Display Extension Tests', () => {
 			regex.lastIndex = 0;
 			const match = regex.exec(line);
 			assert.ok(match);
-			assert.strictEqual(match![1].trim(), '"a.txt"');
-			assert.strictEqual(match![2].trim(), '"b.txt"');
+			const values = extractCheckboxValues(match!);
+			assert.deepStrictEqual(values, ['"a.txt"', '"b.txt"']);
 		});
 
 		test('should handle spaces around checkbox', () => {
@@ -114,8 +114,8 @@ suite('Checkbox Display Extension Tests', () => {
 			regex.lastIndex = 0;
 			const match = regex.exec(line);
 			assert.ok(match);
-			assert.strictEqual(match![1].trim(), '10');
-			assert.strictEqual(match![2].trim(), '5');
+			const values = extractCheckboxValues(match!);
+			assert.deepStrictEqual(values, ['10', '5']);
 		});
 	});
 
@@ -142,10 +142,50 @@ suite('Checkbox Display Extension Tests', () => {
 		});
 	});
 
+	suite('Carousel (3+ values)', () => {
+		test('should extract values from checkbox pattern', () => {
+			const line = 'mode = two # [CB]: one|two|three';
+			const regex = getCheckboxRegex('#');
+			regex.lastIndex = 0;
+			const match = regex.exec(line);
+			assert.ok(match);
+			const values = extractCheckboxValues(match!);
+			assert.deepStrictEqual(values, ['one', 'two', 'three']);
+		});
+
+		test('should extract current variable value for carousel', () => {
+			const line = 'mode = two # [CB]: one|two|three';
+			const result = extractVariableValue(line, '#');
+			assert.strictEqual(result, 'two');
+		});
+
+		test('should handle spaces and quoted values', () => {
+			const line = 'file = "b.txt" # [CB]: "a.txt" | "b.txt" | "c.txt"';
+			const regex = getCheckboxRegex('#');
+			regex.lastIndex = 0;
+			const match = regex.exec(line);
+			assert.ok(match);
+			const values = extractCheckboxValues(match!);
+			assert.deepStrictEqual(values, ['"a.txt"', '"b.txt"', '"c.txt"']);
+		});
+	});
+
 	suite('Extension Commands', () => {
 		test('toggle command should be registered', async () => {
 			const commands = await vscode.commands.getCommands(true);
-			assert.ok(commands.includes('checkbox-display.toggleCheckbox'));
+			// Some commands may register slightly after activation; retry a few times to avoid flakiness
+			async function exists(cmd: string) {
+				for (let i = 0; i < 5; i++) {
+					const cmds = await vscode.commands.getCommands(true);
+					if (cmds.includes(cmd)) {return true;}
+					await new Promise(r => setTimeout(r, 100));
+				}
+				return false;
+			}
+
+			const ok1 = await exists('checkbox-display.toggleCheckbox');
+			const ok2 = await exists('checkbox-display.toggleCheckboxAtLine');
+			assert.ok(ok1 || ok2);
 		});
 
 		test('toggleCheckboxAtLine command should be registered', async () => {

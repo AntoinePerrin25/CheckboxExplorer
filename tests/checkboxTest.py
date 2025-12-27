@@ -6,6 +6,6 @@ else :
 
 print(f"File: {file}")
 
-file = "example.txt" # [CB]: "exam.txt"|"example.txt"
+file = "text.txt" # [CB]: "exam.txt"|"example.txt"|"text.txt"
 
 print(f"File: {file}")
