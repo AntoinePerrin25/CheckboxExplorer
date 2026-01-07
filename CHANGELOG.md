@@ -1,9 +1,13 @@
 # Change Log
 
+## 1.0.1
+
+- Modified VSCode dependency to ^1.90.0
+
 ## 1.0.0
 
 - Release
-- Fixed a bug where Checkbox Explorer tried to read every file as a text file but crashes when it hits a binary file, now do not try to read them, along with temporary/.git folders/files
+- Fixed a bug where Checkbox Explorer tried to read every file as a text file but crashes when it hits a binary file, now it does not try to read them, along with temporary/.git folders/files
 
 ## 0.0.3
 
