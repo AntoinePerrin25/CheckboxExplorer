@@ -3,6 +3,8 @@
 ## 1.0.2
 
 Optimized extension by caching files and added sorting to the Explorer
+Added a file refreshing to check is a checkbox was just inserted onDidChangeTextDocument
+Added the command and the button in the Explorer to refresh checkbox
 
 ## 1.0.1
 
