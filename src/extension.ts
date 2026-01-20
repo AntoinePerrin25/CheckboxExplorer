@@ -24,13 +24,37 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	readonly onDidChangeTreeData: vscode.Event<CheckboxItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
 	private searchFilter: { query: string; caseSensitive: boolean; useRegex: boolean } = { query: '', caseSensitive: false, useRegex: false };
+	// Cache to avoid rescanning files unnecessarily
+	private fileCache: Map<string, { checkboxes: CheckboxItem[], timestamp: number }> = new Map();
 
 	refresh(): void {
 		this._onDidChangeTreeData.fire();
 	}
 
+	refreshFile(filePath: string): void {
+		// Clear cache for this file and fire targeted update
+		this.fileCache.delete(filePath);
+		// Fire with undefined to refresh the entire tree (but cache helps make it faster)
+		this._onDidChangeTreeData.fire(undefined);
+	}
+
+	refreshCheckbox(filePath: string, lineNumber: number): void {
+		// Clear cache for this file to force re-read
+		this.fileCache.delete(filePath);
+		// Fire targeted update for the parent file node
+		// This will cause only that file's children to be re-queried
+		const fileItem: CheckboxItem = {
+			type: 'file',
+			filePath: filePath,
+			fileName: filePath.split('/').pop()
+		};
+		this._onDidChangeTreeData.fire(fileItem);
+	}
+
 	setSearchFilter(query: string, caseSensitive: boolean, useRegex: boolean): void {
 		this.searchFilter = { query, caseSensitive, useRegex };
+		// Clear cache when filter changes
+		this.fileCache.clear();
 		this.refresh();
 	}
 
@@ -116,8 +140,18 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	}
 
 	private async getCheckboxesInFile(filePath: string): Promise<CheckboxItem[]> {
+		// Check cache first (with 5 second TTL)
+		const cached = this.fileCache.get(filePath);
+		const now = Date.now();
+		if (cached && (now - cached.timestamp) < 5000) {
+			return cached.checkboxes;
+		}
+
+		// Read from file and update cache
 		const document = await vscode.workspace.openTextDocument(filePath);
-		return this.findCheckboxesInDocument(document);
+		const checkboxes = this.findCheckboxesInDocument(document);
+		this.fileCache.set(filePath, { checkboxes, timestamp: now });
+		return checkboxes;
 	}
 
 	private findCheckboxesInDocument(document: vscode.TextDocument): CheckboxItem[] {
@@ -416,7 +450,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const toggleFromExplorerCommand = vscode.commands.registerCommand('checkbox-display.toggleFromExplorer', async (item: any) => {
 		if (item.type === 'checkbox') {
 			const editor = await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(item.filePath));
-			toggleCheckboxAtLine(editor, item.lineNumber);
+			// Wait for the edit to complete, then refresh the specific checkbox in the tree
+			await toggleCheckboxAtLine(editor, item.lineNumber);
+			checkboxTreeProvider.refreshCheckbox(item.filePath, item.lineNumber);
 		}
 	});
 	context.subscriptions.push(toggleFromExplorerCommand);
@@ -583,7 +619,8 @@ export function activate(context: vscode.ExtensionContext) {
 				if (autoSave) {
 					editor.document.save();
 				}
-				checkboxTreeProvider.refresh();
+				// Only refresh the specific checkbox, not the entire tree
+				checkboxTreeProvider.refreshCheckbox(filePath, lineNumber);
 			});
 		}
 	});
@@ -602,7 +639,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}, null, context.subscriptions);
 }
 
-export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: number) {
+export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: number): Thenable<boolean> {
 	const line = editor.document.lineAt(lineNumber);
 	const lineText = line.text;
 	const commentSyntax = getCommentSyntax(editor.document.languageId);
@@ -632,16 +669,18 @@ export function toggleCheckboxAtLine(editor: vscode.TextEditor, lineNumber: numb
 		
 		const newText = `${beforeEquals}= ${newValue} ${cbPrefix}${valuesString}`;
 
-		editor.edit(editBuilder => {
+		return editor.edit(editBuilder => {
 			editBuilder.replace(line.range, newText);
-		}).then(() => {
+		}).then(result => {
 			// Auto-save if enabled
 			const autoSave = vscode.workspace.getConfiguration('checkbox-display').get<boolean>('autoSave', false);
 			if (autoSave) {
 				editor.document.save();
 			}
+			return result;
 		});
 	}
+	return Promise.resolve(false);
 }
 
 function updateDiagnostics(document: vscode.TextDocument, diagnosticsCollection: vscode.DiagnosticCollection) {
