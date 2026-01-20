@@ -2,6 +2,8 @@ import typescriptEslint from "typescript-eslint";
 
 export default [{
     "files": [
+      "**/*.ts",
+      "src/**",
       "out/**",
       "snippets/**",
       "assets/**",

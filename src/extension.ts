@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 
 let checkedDecorationType: vscode.TextEditorDecorationType;
 let uncheckedDecorationType: vscode.TextEditorDecorationType;
@@ -27,6 +28,15 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	// Cache to avoid rescanning files unnecessarily
 	private fileCache: Map<string, { checkboxes: CheckboxItem[], timestamp: number }> = new Map();
 
+	// Sorting mode for file list
+	private sortMode: 'Alphabetical' | 'Last Modified' | 'None' = 'Alphabetical';
+
+	setSortMode(mode: 'Alphabetical' | 'Last Modified' | 'None') {
+		this.sortMode = mode;
+		this.fileCache.clear();
+		this.refresh();
+	}
+
 	refresh(): void {
 		this._onDidChangeTreeData.fire();
 	}
@@ -41,14 +51,8 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	refreshCheckbox(filePath: string, lineNumber: number): void {
 		// Clear cache for this file to force re-read
 		this.fileCache.delete(filePath);
-		// Fire targeted update for the parent file node
-		// This will cause only that file's children to be re-queried
-		const fileItem: CheckboxItem = {
-			type: 'file',
-			filePath: filePath,
-			fileName: filePath.split('/').pop()
-		};
-		this._onDidChangeTreeData.fire(fileItem);
+		// Fire undefined to refresh the entire tree (ensures children are re-queried)
+		this._onDidChangeTreeData.fire(undefined);
 	}
 
 	setSearchFilter(query: string, caseSensitive: boolean, useRegex: boolean): void {
@@ -135,7 +139,21 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 				continue;
 			}
 		}
+		let items = Array.from(fileMap.values());
 
+		if (this.sortMode === 'Alphabetical') {
+			items.sort((a, b) => (a.fileName || '').localeCompare(b.fileName || ''));
+		} else if (this.sortMode === 'Last Modified') {
+			const entries = Array.from(fileMap.entries()); // [path, item]
+			const mapped = await Promise.all(entries.map(async ([path, item]) => {
+				const mtime = await fs.promises.stat(path).then((s: fs.Stats) => s.mtimeMs).catch(() => 0);
+				return { path, item, mtime };
+			}));
+			mapped.sort((a, b) => b.mtime - a.mtime); // newest first
+			items = mapped.map(m => m.item);
+		}
+
+		return items;
 		return Array.from(fileMap.values());
 	}
 
@@ -424,6 +442,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Create Checkbox Explorer tree view
 	const checkboxTreeProvider = new CheckboxTreeDataProvider();
+		// Initialize sort mode from settings
+	const initialSort = vscode.workspace.getConfiguration('checkbox-display').get<string>('sortMode', 'Alphabetical') as 'Alphabetical' | 'Last Modified' | 'None';
+	checkboxTreeProvider.setSortMode(initialSort);
+	
+	// Command to change sort mode
+	const setSortModeCommand = vscode.commands.registerCommand('checkbox-display.setSortMode', async () => {
+		const choice = await vscode.window.showQuickPick(['Alphabetical', 'Last Modified', 'None'], { placeHolder: 'Select sort mode for Checkbox Explorer' });
+		if (choice) {
+			await vscode.workspace.getConfiguration('checkbox-display').update('sortMode', choice, vscode.ConfigurationTarget.Global);
+			checkboxTreeProvider.setSortMode(choice as any);
+		}
+	});
+	context.subscriptions.push(setSortModeCommand);
 	const treeView = vscode.window.createTreeView('checkbox-explorer', {
 		treeDataProvider: checkboxTreeProvider,
 		showCollapseAll: true,

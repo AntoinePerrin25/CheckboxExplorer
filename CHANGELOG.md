@@ -1,5 +1,9 @@
 # Change Log
 
+## 1.0.2
+
+Optimized extension by caching files and added sorting to the Explorer
+
 ## 1.0.1
 
 - Modified VSCode dependency to ^1.90.0

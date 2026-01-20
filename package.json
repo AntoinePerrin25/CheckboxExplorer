@@ -172,7 +172,13 @@
           "enum": ["Prompt", "Case Sensitive", "Case Insensitive"],
           "default": "Case Insensitive",
           "description": "How to handle case sensitivity in Checkbox Explorer search: 'Prompt' asks each time, 'Case Sensitive' always matches case, 'Case Insensitive' ignores case"
-        }
+        },
+        "checkbox-display.sortMode": {
+        "type": "string",
+        "enum": ["Alphabetical", "Last Modified", "None"],
+        "default": "Alphabetical",
+        "description": "Sort mode for Checkbox Explorer: alphabetical by filename, by last modification time, or none"
+      }
       }
     }
   },
