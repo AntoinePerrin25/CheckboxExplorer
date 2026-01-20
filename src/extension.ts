@@ -586,11 +586,22 @@ export function activate(context: vscode.ExtensionContext) {
 	}, null, context.subscriptions);
 
 	vscode.workspace.onDidChangeTextDocument(event => {
-		const editor = vscode.window.activeTextEditor;
-		if (editor && event.document === editor.document) {
+		// Update decorations if the document is visible in an editor
+		const editor = vscode.window.visibleTextEditors.find(e => e.document === event.document) || vscode.window.activeTextEditor;
+		if (editor) {
 			updateDecorations(editor);
-			updateDiagnostics(editor.document, diagnosticsCollection);
-			codeLensProvider.refresh();
+		}
+
+		// Always update diagnostics and codelenses for the changed document
+		updateDiagnostics(event.document, diagnosticsCollection);
+		codeLensProvider.refresh();
+
+		// Refresh the tree for this file so new checkboxes are detected
+		try {
+			checkboxTreeProvider.refreshFile(event.document.uri.fsPath);
+		} catch (e) {
+			// Fallback to full refresh if anything goes wrong
+			checkboxTreeProvider.refresh();
 		}
 	}, null, context.subscriptions);
 
