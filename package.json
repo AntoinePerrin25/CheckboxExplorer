@@ -48,6 +48,11 @@
         "command": "checkbox-display.clearSearch",
         "title": "Clear Search",
         "icon": "$(close)"
+      },
+      {
+        "command": "checkbox-display.refreshExplorer",
+        "title": "Refresh Explorer",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -59,6 +64,11 @@
         },
         {
           "command": "checkbox-display.clearSearch",
+          "group": "navigation",
+          "when": "view == checkbox-explorer"
+        },
+        {
+          "command": "checkbox-display.refreshExplorer",
           "group": "navigation",
           "when": "view == checkbox-explorer"
         }

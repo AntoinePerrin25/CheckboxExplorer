@@ -526,6 +526,12 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(clearSearchCommand);
 
+	// Command to refresh Checkbox Explorer
+	const refreshExplorerCommand = vscode.commands.registerCommand('checkbox-display.refreshExplorer', () => {
+		checkboxTreeProvider.refresh();
+	});
+	context.subscriptions.push(refreshExplorerCommand);
+
 	vscode.window.onDidChangeActiveTextEditor(editor => {
 		if (editor) {
 			updateDecorations(editor);
