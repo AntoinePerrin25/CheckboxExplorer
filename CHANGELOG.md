@@ -1,9 +1,20 @@
 # Change Log
 
+## 1.0.3
+
+Unreleased / 1.0.3
+
+- Added extensive tests and test coverage improvements (new test cases, integration tests)
+- Enhanced file caching and targeted refresh behavior (per-file cache, debounce on file changes)
+- Implemented performance improvements for large repositories (batch scanning, parallel reads)
+- Added / improved Explorer features: sorting modes, refresh command and button, search enhancements
+- Fixed diagnostics false-positives in test files and added exclusion rules for test paths
+- Made `toggleCheckboxAtLine` return a Promise and ensured proper refresh after toggles
+
 ## 1.0.2
 
 Optimized extension by caching files and added sorting to the Explorer
-Added a file refreshing to check is a checkbox was just inserted onDidChangeTextDocument
+Added a file refreshing to check if a checkbox was just inserted onDidChangeTextDocument
 Added the command and the button in the Explorer to refresh checkbox
 
 ## 1.0.1

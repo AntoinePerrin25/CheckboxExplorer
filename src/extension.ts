@@ -748,6 +748,14 @@ function updateDiagnostics(document: vscode.TextDocument, diagnosticsCollection:
 		diagnosticsCollection.set(document.uri, []);
 		return;
 	}
+	
+	// Skip test files to avoid false positives on test strings containing checkbox patterns
+	const filePath = document.uri.fsPath;
+	if (filePath.includes('.test.') || filePath.includes('.spec.') || filePath.includes('/test/') || filePath.includes('/tests/')) {
+		diagnosticsCollection.set(document.uri, []);
+		return;
+	}
+	
 
 	const diagnostics: vscode.Diagnostic[] = [];
 	const commentSyntax = getCommentSyntax(document.languageId);
