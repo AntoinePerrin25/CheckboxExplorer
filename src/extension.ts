@@ -25,46 +25,66 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	readonly onDidChangeTreeData: vscode.Event<CheckboxItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
 	private searchFilter: { query: string; caseSensitive: boolean; useRegex: boolean } = { query: '', caseSensitive: false, useRegex: false };
-	// Cache to avoid rescanning files unnecessarily
 	private fileCache: Map<string, { checkboxes: CheckboxItem[], timestamp: number }> = new Map();
+	private filesWithCheckboxesCache: { items: CheckboxItem[], timestamp: number } | null = null;
+	private readonly FILES_CACHE_TTL = 30000;
+	private readonly FILE_CACHE_TTL = 10000;
 
-	// Sorting mode for file list
 	private sortMode: 'Alphabetical' | 'Last Modified' | 'None' = 'Alphabetical';
+
+	private refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private pendingRefreshFiles: Set<string> = new Set();
 
 	setSortMode(mode: 'Alphabetical' | 'Last Modified' | 'None') {
 		this.sortMode = mode;
-		this.fileCache.clear();
+		this.invalidateAllCaches();
 		this.refresh();
 	}
 
+	private invalidateAllCaches() {
+		this.fileCache.clear();
+		this.filesWithCheckboxesCache = null;
+	}
+
 	refresh(): void {
+		this.invalidateAllCaches();
 		this._onDidChangeTreeData.fire();
 	}
 
+	refreshFileDebounced(filePath: string): void {
+		this.pendingRefreshFiles.add(filePath);
+		
+		if (this.refreshDebounceTimer) {
+			clearTimeout(this.refreshDebounceTimer);
+		}
+		
+		this.refreshDebounceTimer = setTimeout(() => {
+			for (const fp of this.pendingRefreshFiles) {
+				this.fileCache.delete(fp);
+			}
+			this.filesWithCheckboxesCache = null;
+			this.pendingRefreshFiles.clear();
+			this._onDidChangeTreeData.fire(undefined);
+		}, 500);
+	}
+
 	refreshFile(filePath: string): void {
-		// Clear cache for this file and fire targeted update
-		this.fileCache.delete(filePath);
-		// Fire with undefined to refresh the entire tree (but cache helps make it faster)
-		this._onDidChangeTreeData.fire(undefined);
+		this.refreshFileDebounced(filePath);
 	}
 
 	refreshCheckbox(filePath: string, lineNumber: number): void {
-		// Clear cache for this file to force re-read
-		this.fileCache.delete(filePath);
-		// Fire undefined to refresh the entire tree (ensures children are re-queried)
-		this._onDidChangeTreeData.fire(undefined);
+		this.refreshFileDebounced(filePath);
 	}
 
 	setSearchFilter(query: string, caseSensitive: boolean, useRegex: boolean): void {
 		this.searchFilter = { query, caseSensitive, useRegex };
-		// Clear cache when filter changes
-		this.fileCache.clear();
+		this.invalidateAllCaches();
 		this.refresh();
 	}
 
 	private matchesFilter(varName: string): boolean {
 		const { query, caseSensitive, useRegex } = this.searchFilter;
-		if (!query) {return true;}
+		if (!query) { return true; }
 
 		try {
 			if (useRegex) {
@@ -77,23 +97,19 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 				return searchStr.includes(queryStr);
 			}
 		} catch (e) {
-			// Invalid regex, treat as literal string
 			return false;
 		}
 	}
 
 	async getChildren(element?: CheckboxItem): Promise<CheckboxItem[]> {
 		if (!element) {
-			// Root level: show all files with checkboxes
 			return this.getCheckboxFiles();
 		} else if (element.type === 'file') {
-			// File level: show checkboxes in this file
 			return this.getCheckboxesInFile(element.filePath!);
 		} else if (element.type === 'checkbox') {
-			// Checkbox level: show values as child items
 			const values = element.checkboxValues || [];
-			return values.map((value, idx) => ({
-				type: 'value',
+			return values.map((value) => ({
+				type: 'value' as const,
 				filePath: element.filePath!,
 				lineNumber: element.lineNumber!,
 				varName: element.varName!,
@@ -106,70 +122,70 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	}
 
 	private async getCheckboxFiles(): Promise<CheckboxItem[]> {
-		// Exclude: .git, node_modules, out, dist, .vscode-test, *.vsix
-		const excludePattern = '**/{.git,node_modules,out,dist,.vscode-test}/**';
-		const files = await vscode.workspace.findFiles('**/*', excludePattern, 1000);
+		const now = Date.now();
+		if (this.filesWithCheckboxesCache && (now - this.filesWithCheckboxesCache.timestamp) < this.FILES_CACHE_TTL) {
+			return this.applySorting(this.filesWithCheckboxesCache.items);
+		}
+
+		const excludePattern = '**/{.git,node_modules,out,dist,.vscode-test,build,coverage,__pycache__,.pytest_cache}/**';
+		const includePattern = '**/*.{py,js,ts,c,cpp,h,hpp,java,go,rs,rb,php,swift,kt,cs,yaml,yml,sh,bash,ps1,r,dart}';
+		
+		const files = await vscode.workspace.findFiles(includePattern, excludePattern, 500);
 		const fileMap = new Map<string, CheckboxItem>();
 
-		for (const file of files) {
-			// Skip Jupyter notebooks - they're not properly supported -> breaks json because of the escaped \n
-			if (file.fsPath.endsWith('.ipynb')) {
-				continue;
-			}
-
-			// Skip binary files by checking for common binary extensions
-			const binaryExtensions = ['.vsix', '.git', '.bin', '.exe', '.dll', '.so', '.o', '.a', '.lib', '.pyc', '.pyo', '.class'];
-			if (binaryExtensions.some(ext => file.fsPath.endsWith(ext))) {
-				continue;
-			}
-
-			try {
-				const document = await vscode.workspace.openTextDocument(file);
-				const checkboxes = this.findCheckboxesInDocument(document);
-				
-				if (checkboxes.length > 0) {
-					fileMap.set(file.fsPath, {
-						type: 'file',
-						filePath: file.fsPath,
-						fileName: file.path.split('/').pop()
-					});
+		const BATCH_SIZE = 20;
+		for (let i = 0; i < files.length; i += BATCH_SIZE) {
+			const batch = files.slice(i, i + BATCH_SIZE);
+			await Promise.all(batch.map(async (file) => {
+				try {
+					const content = await fs.promises.readFile(file.fsPath, 'utf8');
+					if (content.includes('[CB]:')) {
+						fileMap.set(file.fsPath, {
+							type: 'file',
+							filePath: file.fsPath,
+							fileName: file.path.split('/').pop()
+						});
+					}
+				} catch (error) {
+					// Skip files that cannot be read
 				}
-			} catch (error) {
-				// Skip files that cannot be opened (binary, permission denied, etc.)
-				continue;
-			}
-		}
-		let items = Array.from(fileMap.values());
-
-		if (this.sortMode === 'Alphabetical') {
-			items.sort((a, b) => (a.fileName || '').localeCompare(b.fileName || ''));
-		} else if (this.sortMode === 'Last Modified') {
-			const entries = Array.from(fileMap.entries()); // [path, item]
-			const mapped = await Promise.all(entries.map(async ([path, item]) => {
-				const mtime = await fs.promises.stat(path).then((s: fs.Stats) => s.mtimeMs).catch(() => 0);
-				return { path, item, mtime };
 			}));
-			mapped.sort((a, b) => b.mtime - a.mtime); // newest first
-			items = mapped.map(m => m.item);
 		}
 
+		const items = Array.from(fileMap.values());
+		this.filesWithCheckboxesCache = { items, timestamp: now };
+		return this.applySorting(items);
+	}
+
+	private async applySorting(items: CheckboxItem[]): Promise<CheckboxItem[]> {
+		if (this.sortMode === 'Alphabetical') {
+			return [...items].sort((a, b) => (a.fileName || '').localeCompare(b.fileName || ''));
+		} else if (this.sortMode === 'Last Modified') {
+			const mapped = await Promise.all(items.map(async (item) => {
+				const mtime = await fs.promises.stat(item.filePath!).then((s: fs.Stats) => s.mtimeMs).catch(() => 0);
+				return { item, mtime };
+			}));
+			mapped.sort((a, b) => b.mtime - a.mtime);
+			return mapped.map(m => m.item);
+		}
 		return items;
-		return Array.from(fileMap.values());
 	}
 
 	private async getCheckboxesInFile(filePath: string): Promise<CheckboxItem[]> {
-		// Check cache first (with 5 second TTL)
 		const cached = this.fileCache.get(filePath);
 		const now = Date.now();
-		if (cached && (now - cached.timestamp) < 5000) {
+		if (cached && (now - cached.timestamp) < this.FILE_CACHE_TTL) {
 			return cached.checkboxes;
 		}
 
-		// Read from file and update cache
-		const document = await vscode.workspace.openTextDocument(filePath);
-		const checkboxes = this.findCheckboxesInDocument(document);
-		this.fileCache.set(filePath, { checkboxes, timestamp: now });
-		return checkboxes;
+		try {
+			const document = await vscode.workspace.openTextDocument(filePath);
+			const checkboxes = this.findCheckboxesInDocument(document);
+			this.fileCache.set(filePath, { checkboxes, timestamp: now });
+			return checkboxes;
+		} catch (e) {
+			return [];
+		}
 	}
 
 	private findCheckboxesInDocument(document: vscode.TextDocument): CheckboxItem[] {
@@ -183,16 +199,13 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 			const lineText = document.lineAt(i).text;
 			checkboxRegex.lastIndex = 0;
 			const cbMatch = checkboxRegex.exec(lineText);
-			
+
 			if (cbMatch) {
 				const varValue = extractVariableValue(lineText, commentSyntax);
 				const values = extractCheckboxValues(cbMatch);
-				
-				// Extract variable name correctly
 				const varNameMatch = lineText.match(varNameRegex);
 				const varName = varNameMatch ? varNameMatch[1].trim() : '(unnamed)';
 
-				// Apply search filter
 				if (this.matchesFilter(varName)) {
 					checkboxes.push({
 						type: 'checkbox',
@@ -216,7 +229,6 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 				vscode.TreeItemCollapsibleState.Collapsed
 			);
 		} else if (element.type === 'checkbox') {
-			// Checkbox item - make it expandable to show values
 			const values = element.checkboxValues || [];
 			const currentValue = element.varValue;
 			const isChecked = currentValue === values[0];
@@ -232,7 +244,6 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 			item.description = `Line ${(element.lineNumber || 0) + 1}`;
 			item.contextValue = 'checkbox';
 
-			// Add command to navigate to line
 			item.command = {
 				command: 'checkbox-display.goToCheckbox',
 				title: 'Go to Checkbox',
@@ -241,10 +252,9 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 
 			return item;
 		} else if (element.type === 'value') {
-			// Value item - clickable to set this value
 			const isSelected = element.displayValue === element.varValue;
 			const icon = isSelected ? '✓' : ' ';
-			
+
 			const item = new vscode.TreeItem(
 				`${icon} ${element.displayValue}`,
 				vscode.TreeItemCollapsibleState.None
