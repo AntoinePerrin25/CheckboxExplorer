@@ -2,7 +2,7 @@
   "name": "checkbox-display",
   "displayName": "Checkbox Display",
   "description": "Display interactive checkboxes in VS Code editor",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "engines": {
     "vscode": "^1.90.0"
   },

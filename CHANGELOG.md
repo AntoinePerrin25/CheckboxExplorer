@@ -1,8 +1,6 @@
 # Change Log
 
-## 1.0.3
-
-Unreleased / 1.0.3
+## 1.0.4
 
 - Added extensive tests and test coverage improvements (new test cases, integration tests)
 - Enhanced file caching and targeted refresh behavior (per-file cache, debounce on file changes)
