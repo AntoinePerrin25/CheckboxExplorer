@@ -140,11 +140,24 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 				try {
 					const content = await fs.promises.readFile(file.fsPath, 'utf8');
 					if (content.includes('[CB]:')) {
-						fileMap.set(file.fsPath, {
-							type: 'file',
-							filePath: file.fsPath,
-							fileName: file.path.split('/').pop()
-						});
+						let shouldInclude = true;
+						
+						// If search filter is active, check if the file has any matching checkboxes
+						if (this.searchFilter.query) {
+							const document = await vscode.workspace.openTextDocument(file.fsPath);
+							const checkboxes = this.findCheckboxesInDocument(document);
+							// Only include the file if it has at least one matching checkbox
+							shouldInclude = checkboxes.length > 0;
+						}
+						
+						if (shouldInclude) {
+							const fileName = file.path.split('/').pop();
+							fileMap.set(file.fsPath, {
+								type: 'file',
+								filePath: file.fsPath,
+								fileName: fileName
+							});
+						}
 					}
 				} catch (error) {
 					// Skip files that cannot be read
