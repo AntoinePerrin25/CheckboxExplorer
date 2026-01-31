@@ -168,7 +168,29 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 		return [];
 	}
 
-	private async getCheckboxFiles(): Promise<CheckboxItem[]> {
+	getParent(element: CheckboxItem): CheckboxItem | undefined {
+		// For 'value' items, parent is the checkbox
+		// For 'checkbox' items, parent is the file
+		// For 'file' items, parent is undefined (root level)
+		if (element.type === 'value') {
+			return {
+				type: 'checkbox',
+				filePath: element.filePath!,
+				lineNumber: element.lineNumber!,
+				varName: element.varName!,
+				varValue: element.varValue,
+				checkboxValues: element.checkboxValues
+			};
+		} else if (element.type === 'checkbox') {
+			return {
+				type: 'file',
+				filePath: element.filePath!
+			};
+		}
+		return undefined;
+	}
+
+	async getCheckboxFiles(): Promise<CheckboxItem[]> {
 		const now = Date.now();
 		if (this.filesWithCheckboxesCache && (now - this.filesWithCheckboxesCache.timestamp) < this.FILES_CACHE_TTL) {
 			return this.applySorting(this.filesWithCheckboxesCache.items);
@@ -744,6 +766,31 @@ export function activate(context: vscode.ExtensionContext) {
 		checkboxTreeProvider.setSearchFilter('', false, false);
 	});
 	context.subscriptions.push(clearSearchCommand);
+
+	// Expand all files in the tree
+	const expandAllCommand = vscode.commands.registerCommand('checkbox-display.expandAll', async () => {
+		try {
+			const files = await checkboxTreeProvider.getCheckboxFiles();
+			if (files && files.length > 0) {
+				let expandedCount = 0;
+				for (const file of files) {
+					try {
+						await treeView.reveal(file, { select: false, focus: false, expand: true });
+						expandedCount++;
+					} catch (error) {
+						console.log('Error revealing file:', error);
+					}
+				}
+				vscode.window.showInformationMessage(`Expanded ${expandedCount} file(s)`);
+			} else {
+				vscode.window.showInformationMessage('No files to expand');
+			}
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to expand files: ${error}`);
+			console.error('Expand all error:', error);
+		}
+	});
+	context.subscriptions.push(expandAllCommand);
 
 	// Command to refresh Checkbox Explorer
 	const refreshExplorerCommand = vscode.commands.registerCommand('checkbox-display.refreshExplorer', () => {
