@@ -1,5 +1,22 @@
 # Change Log
 
+## 1.1.0
+
+### Major Features
+- **Integrated Search Input Box**: Added a real-time search input box directly in the Dedicated "Checkbox: Search" container with custom icon
+  - WebView-based implementation with native VS Code styling
+  - Real-time filtering with 300ms debounce
+  - Clear button for quick filter removal
+  - Search input always visible at the top
+  - Better organization and discoverability
+
+### Technical Changes
+- Created `SearchInputViewProvider` class for WebView-based search input
+- Moved from explorer sidebar to custom `checkbox-container` : "Checkbox: Explorer" view container
+- Simplified search command to focus the container
+- Removed dependency on command palette for search
+- Added SVG icon for the activity bar and png for the extension icon
+
 ## 1.0.4
 
 - Added extensive tests and test coverage improvements (new test cases, integration tests)
