@@ -44,7 +44,7 @@ suite('Checkbox Display Extension Tests', () => {
 		});
 
 		test('should extract numeric value with // comment', () => {
-			const line = 'int checkbox1 = 1; // [CB]: 1|0';
+			const line = 'int checkbox1 = 1; \/\/ [CB]: 1|0';
 			const result = extractVariableValue(line, '//');
 			assert.strictEqual(result, '1;');
 		});
@@ -92,7 +92,7 @@ suite('Checkbox Display Extension Tests', () => {
 		});
 
 		test('should match checkbox with // comment', () => {
-			const line = 'int var = 1; // [CB]: 0|1';
+			const line = 'int var = 1; \/\/ [CB]: 0|1';
 			const regex = getCheckboxRegex('//');
 			regex.lastIndex = 0;
 			const match = regex.exec(line);
@@ -131,14 +131,14 @@ suite('Checkbox Display Extension Tests', () => {
 		});
 
 		test('should detect JavaScript checkbox', () => {
-			const line = 'const enabled = true; // [CB]: false|true';
+			const line = 'const enabled = true; \/\/ [CB]: false|true';
 			const regex = getCheckboxRegex('//');
 			regex.lastIndex = 0;
 			assert.ok(regex.exec(line));
 		});
 
 		test('should detect C++ checkbox', () => {
-			const line = 'bool enabled = true; // [CB]: false|true';
+			const line = 'bool enabled = true; \/\/ [CB]: false|true';
 			const regex = getCheckboxRegex('//');
 			regex.lastIndex = 0;
 			assert.ok(regex.exec(line));
@@ -548,7 +548,7 @@ suite('Checkbox Display Extension Tests', () => {
 
 		suite('JavaScript/TypeScript File Support', () => {
 			test('should detect checkbox in JavaScript file', async () => {
-				const content = 'const DEBUG = true; // [CB]: false|true\n';
+				const content = 'const DEBUG = true; \/\/ [CB]: false|true\n';
 				const filePath = await createTempFile('test_js.js', content);
 				
 				const doc = await vscode.workspace.openTextDocument(filePath);
@@ -567,7 +567,7 @@ suite('Checkbox Display Extension Tests', () => {
 			});
 
 			test('should detect checkbox in TypeScript file', async () => {
-				const content = 'const level: number = 2; // [CB]: 1|2|3\n';
+				const content = 'const level: number = 2; \/\/ [CB]: 1|2|3\n';
 				const filePath = await createTempFile('test_ts.ts', content);
 				
 				const doc = await vscode.workspace.openTextDocument(filePath);
@@ -588,7 +588,7 @@ suite('Checkbox Display Extension Tests', () => {
 
 		suite('C/C++ File Support', () => {
 			test('should detect checkbox in C file', async () => {
-				const content = 'int debug = 1; // [CB]: 0|1\n';
+				const content = 'int debug = 1; \/\/ [CB]: 0|1\n';
 				const filePath = await createTempFile('test_c.c', content);
 				
 				const doc = await vscode.workspace.openTextDocument(filePath);
@@ -607,7 +607,7 @@ suite('Checkbox Display Extension Tests', () => {
 			});
 
 			test('should detect checkbox in C++ file', async () => {
-				const content = 'bool verbose = true; // [CB]: false|true\n';
+				const content = 'bool verbose = true; \/\/ [CB]: false|true\n';
 				const filePath = await createTempFile('test_cpp.cpp', content);
 				
 				const doc = await vscode.workspace.openTextDocument(filePath);
@@ -626,7 +626,7 @@ suite('Checkbox Display Extension Tests', () => {
 
 		suite('Java File Support', () => {
 			test('should detect checkbox in Java file', async () => {
-				const content = 'int logLevel = 2; // [CB]: 0|1|2|3\n';
+				const content = 'int logLevel = 2; \/\/ [CB]: 0|1|2|3\n';
 				const filePath = await createTempFile('Test.java', content);
 				
 				const doc = await vscode.workspace.openTextDocument(filePath);
@@ -647,7 +647,7 @@ suite('Checkbox Display Extension Tests', () => {
 
 		suite('Go File Support', () => {
 			test('should detect checkbox in Go file', async () => {
-				const content = 'var debug = true // [CB]: false|true\n';
+				const content = 'var debug = true; \/\/ [CB]: false|true\n';
 				const filePath = await createTempFile('test.go', content);
 				
 				const doc = await vscode.workspace.openTextDocument(filePath);
@@ -666,7 +666,7 @@ suite('Checkbox Display Extension Tests', () => {
 
 		suite('Rust File Support', () => {
 			test('should detect checkbox in Rust file', async () => {
-				const content = 'let debug = true; // [CB]: false|true\n';
+				const content = 'let debug = true; \/\/ [CB]: false|true\n';
 				const filePath = await createTempFile('test.rs', content);
 				
 				const doc = await vscode.workspace.openTextDocument(filePath);

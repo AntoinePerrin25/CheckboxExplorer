@@ -58,11 +58,6 @@
     "menus": {
       "view/title": [
         {
-          "command": "checkbox-display.searchCheckboxes",
-          "group": "navigation",
-          "when": "view == checkbox-explorer"
-        },
-        {
           "command": "checkbox-display.clearSearch",
           "group": "navigation",
           "when": "view == checkbox-explorer"
@@ -135,11 +130,26 @@
         "path": "./snippets/checkboxes.code-snippets"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "checkbox-container",
+          "title": "Checkboxes",
+          "icon": "assets/checkbox-icon.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "checkbox-container": [
+        {
+          "id": "checkbox-search-input",
+          "name": "Search",
+          "type": "webview",
+          "icon": "$(checklist)"
+        },
         {
           "id": "checkbox-explorer",
-          "name": "Checkbox Explorer",
+          "name": "Explorer",
           "icon": "$(checklist)"
         }
       ]
@@ -214,6 +224,7 @@
     "type": "git",
     "url": "https://github.com/AntoinePerrin25/vsc-ext-checkbox.git"
   },
+  "icon": "assets/checkbox-icon.png",
   "publisher": "antoineperrin",
   "license": "GPL-3.0-or-later"
 }
