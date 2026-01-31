@@ -2,7 +2,7 @@
   "name": "checkbox-display",
   "displayName": "Checkbox Display",
   "description": "Display interactive checkboxes in VS Code editor",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -45,9 +45,31 @@
         "icon": "$(search)"
       },
       {
+        "command": "checkbox-display.toggleCaseSensitive",
+        "title": "Toggle Case Sensitivity",
+        "icon": "$(case-sensitive)"
+      },
+      {
+        "command": "checkbox-display.sortAlphabetical",
+        "title": "Sort Alphabetically"
+      },
+      {
+        "command": "checkbox-display.sortLastModified",
+        "title": "Sort by Last Modified"
+      },
+      {
+        "command": "checkbox-display.sortNone",
+        "title": "No Sorting"
+      },
+      {
         "command": "checkbox-display.clearSearch",
         "title": "Clear Search",
         "icon": "$(close)"
+      },
+      {
+        "command": "checkbox-display.expandAll",
+        "title": "Expand All Files",
+        "icon": "$(expand-all)"
       },
       {
         "command": "checkbox-display.refreshExplorer",
@@ -55,22 +77,48 @@
         "icon": "$(refresh)"
       }
     ],
+    "submenus": [
+      {
+        "id": "checkbox-display.sortMenu",
+        "label": "Sort By",
+        "icon": "$(filter)"
+      }
+    ],
     "menus": {
       "view/title": [
         {
-          "command": "checkbox-display.searchCheckboxes",
-          "group": "navigation",
+          "command": "checkbox-display.toggleCaseSensitive",
+          "group": "navigation@1",
           "when": "view == checkbox-explorer"
         },
         {
-          "command": "checkbox-display.clearSearch",
-          "group": "navigation",
+          "submenu": "checkbox-display.sortMenu",
+          "group": "navigation@2",
           "when": "view == checkbox-explorer"
         },
         {
           "command": "checkbox-display.refreshExplorer",
-          "group": "navigation",
+          "group": "navigation@3",
           "when": "view == checkbox-explorer"
+        },
+        {
+          "command": "checkbox-display.expandAll",
+          "group": "navigation@4",
+          "when": "view == checkbox-explorer"
+        }
+      ],
+      "checkbox-display.sortMenu": [
+        {
+          "command": "checkbox-display.sortAlphabetical",
+          "group": "sort@1"
+        },
+        {
+          "command": "checkbox-display.sortLastModified",
+          "group": "sort@2"
+        },
+        {
+          "command": "checkbox-display.sortNone",
+          "group": "sort@3"
         }
       ]
     },
@@ -135,11 +183,26 @@
         "path": "./snippets/checkboxes.code-snippets"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "checkbox-container",
+          "title": "Checkboxes",
+          "icon": "assets/checkbox-icon.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "checkbox-container": [
+        {
+          "id": "checkbox-search-input",
+          "name": "Search",
+          "type": "webview",
+          "icon": "$(checklist)"
+        },
         {
           "id": "checkbox-explorer",
-          "name": "Checkbox Explorer",
+          "name": "Explorer",
           "icon": "$(checklist)"
         }
       ]
@@ -214,6 +277,7 @@
     "type": "git",
     "url": "https://github.com/AntoinePerrin25/vsc-ext-checkbox.git"
   },
+  "icon": "assets/checkbox-icon.png",
   "publisher": "antoineperrin",
   "license": "GPL-3.0-or-later"
 }

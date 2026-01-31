@@ -10,7 +10,10 @@ Checkbox Display is a VS Code extension that detects and renders interactive che
 - Decorations show ☐/☑ for binary values and circled numbers for carousel entries.
 - Value validation diagnostics to warn when a variable's value doesn't match defined carousel options.
 - Configurable colors and autosave on toggle.
+- **Checkbox Explorer** with integrated search input box for real-time filtering (similar to Source Control).
 - Project Sidebar (Checkbox explorer) with search and case-sensitivity option.
+- **Checkbox Explorer** with integrated search input box for real-time filtering (similar to Source Control).
+- New Activity Bar "Checkboxes" container with a built-in Search input and Explorer view.
 
 ## How it works
 
@@ -34,6 +37,14 @@ Snippets are available (type `cb` or `checkbox`) to insert a pattern quickly.
 
 - `Toggle Checkbox` — toggles the checkbox under the cursor (Command Palette).
 - Default shortcut: `Cmd+Shift+C` (macOS) / `Ctrl+Shift+C` (Windows/Linux).
+
+View & toolbar commands (available in the Checkbox Explorer view title and Command Palette):
+
+- `checkbox-display.searchCheckboxes` — Focus the Checkboxes activity and place focus in the search input.
+- `checkbox-display.clearSearch` — Clear the current search filter.
+- `checkbox-display.toggleCaseSensitive` — Toggle case sensitivity for the explorer search.
+- `checkbox-display.sortAlphabetical` / `checkbox-display.sortLastModified` / `checkbox-display.sortNone` — Sort the explorer entries.
+- `checkbox-display.expandAll` — Expand all files in the explorer.
 
 ## Configuration
 

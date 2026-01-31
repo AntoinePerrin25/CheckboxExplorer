@@ -7,10 +7,7 @@ export default [{
       "out/**",
       "snippets/**",
       "assets/**",
-      "README.md",
-      "CHANGELOG.md",
       "LICENSE",
-      "package.json"
     ],
 }, {
     plugins: {

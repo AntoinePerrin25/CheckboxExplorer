@@ -31,14 +31,51 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	private readonly FILE_CACHE_TTL = 10000;
 
 	private sortMode: 'Alphabetical' | 'Last Modified' | 'None' = 'Alphabetical';
+	private caseSensitive: boolean = false;
 
 	private refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private pendingRefreshFiles: Set<string> = new Set();
+
+	private treeView?: vscode.TreeView<CheckboxItem>;
+
+	setTreeView(treeView: vscode.TreeView<CheckboxItem>): void {
+		this.treeView = treeView;
+		this.updateTreeViewMessage();
+	}
+
+	getCurrentSearchQuery(): string {
+		return this.searchFilter.query;
+	}
+
+	private updateTreeViewMessage(): void {
+		if (!this.treeView) { return; }
+		
+		if (this.searchFilter.query) {
+			const caseMode = this.searchFilter.caseSensitive ? 'case sensitive' : 'case insensitive';
+			const regexMode = this.searchFilter.useRegex ? 'regex' : 'text';
+			this.treeView.message = `Filtering: '${this.searchFilter.query}' With: ${caseMode}, ${regexMode}`;
+		} else {
+			this.treeView.message = undefined;
+		}
+	}
 
 	setSortMode(mode: 'Alphabetical' | 'Last Modified' | 'None') {
 		this.sortMode = mode;
 		this.invalidateAllCaches();
 		this.refresh();
+	}
+
+	toggleCaseSensitive(): boolean {
+		this.caseSensitive = !this.caseSensitive;
+		// Reapply current search filter with new case sensitivity
+		if (this.searchFilter.query) {
+			this.setSearchFilter(this.searchFilter.query, this.caseSensitive, this.searchFilter.useRegex);
+		}
+		return this.caseSensitive;
+	}
+
+	getCaseSensitive(): boolean {
+		return this.caseSensitive;
 	}
 
 	private invalidateAllCaches() {
@@ -79,7 +116,17 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	setSearchFilter(query: string, caseSensitive: boolean, useRegex: boolean): void {
 		this.searchFilter = { query, caseSensitive, useRegex };
 		this.invalidateAllCaches();
+		this.updateTreeViewMessage();
 		this.refresh();
+		
+		// Auto-expand files with matching results
+		if (this.treeView && query) {
+			this.getCheckboxFiles().then(files => {
+				files.forEach(file => {
+					this.treeView!.reveal(file, { select: false, focus: false, expand: true });
+				});
+			});
+		}
 	}
 
 	private matchesFilter(varName: string): boolean {
@@ -121,7 +168,29 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 		return [];
 	}
 
-	private async getCheckboxFiles(): Promise<CheckboxItem[]> {
+	getParent(element: CheckboxItem): CheckboxItem | undefined {
+		// For 'value' items, parent is the checkbox
+		// For 'checkbox' items, parent is the file
+		// For 'file' items, parent is undefined (root level)
+		if (element.type === 'value') {
+			return {
+				type: 'checkbox',
+				filePath: element.filePath!,
+				lineNumber: element.lineNumber!,
+				varName: element.varName!,
+				varValue: element.varValue,
+				checkboxValues: element.checkboxValues
+			};
+		} else if (element.type === 'checkbox') {
+			return {
+				type: 'file',
+				filePath: element.filePath!
+			};
+		}
+		return undefined;
+	}
+
+	async getCheckboxFiles(): Promise<CheckboxItem[]> {
 		const now = Date.now();
 		if (this.filesWithCheckboxesCache && (now - this.filesWithCheckboxesCache.timestamp) < this.FILES_CACHE_TTL) {
 			return this.applySorting(this.filesWithCheckboxesCache.items);
@@ -140,11 +209,24 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 				try {
 					const content = await fs.promises.readFile(file.fsPath, 'utf8');
 					if (content.includes('[CB]:')) {
-						fileMap.set(file.fsPath, {
-							type: 'file',
-							filePath: file.fsPath,
-							fileName: file.path.split('/').pop()
-						});
+						let shouldInclude = true;
+						
+						// If search filter is active, check if the file has any matching checkboxes
+						if (this.searchFilter.query) {
+							const document = await vscode.workspace.openTextDocument(file.fsPath);
+							const checkboxes = this.findCheckboxesInDocument(document);
+							// Only include the file if it has at least one matching checkbox
+							shouldInclude = checkboxes.length > 0;
+						}
+						
+						if (shouldInclude) {
+							const fileName = file.path.split('/').pop();
+							fileMap.set(file.fsPath, {
+								type: 'file',
+								filePath: file.fsPath,
+								fileName: fileName
+							});
+						}
 					}
 				} catch (error) {
 					// Skip files that cannot be read
@@ -224,9 +306,14 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 
 	getTreeItem(element: CheckboxItem): vscode.TreeItem {
 		if (element.type === 'file') {
+			// Auto-expand files when search filter is active
+			const collapsibleState = this.searchFilter.query 
+				? vscode.TreeItemCollapsibleState.Expanded 
+				: vscode.TreeItemCollapsibleState.Collapsed;
+			
 			return new vscode.TreeItem(
 				element.fileName!,
-				vscode.TreeItemCollapsibleState.Collapsed
+				collapsibleState
 			);
 		} else if (element.type === 'checkbox') {
 			const values = element.checkboxValues || [];
@@ -352,6 +439,142 @@ export function validateCheckboxValue(lineText: string, commentSyntax: string = 
 	return { isValid: true };
 }
 
+class SearchInputViewProvider implements vscode.WebviewViewProvider {
+	private _view?: vscode.WebviewView;
+
+	constructor(
+		private readonly _extensionUri: vscode.Uri,
+		private readonly _treeProvider: CheckboxTreeDataProvider
+	) {}
+
+	resolveWebviewView(
+		webviewView: vscode.WebviewView,
+		context: vscode.WebviewViewResolveContext,
+		_token: vscode.CancellationToken
+	) {
+		this._view = webviewView;
+
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [this._extensionUri]
+		};
+
+		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+
+		// Handle messages from the webview
+		webviewView.webview.onDidReceiveMessage(data => {
+			switch (data.type) {
+				case 'search':
+					const isCaseSensitive = this._treeProvider.getCaseSensitive();
+					const useRegex = data.value.startsWith('^') || data.value.includes('[');
+					this._treeProvider.setSearchFilter(data.value, isCaseSensitive, useRegex);
+					break;
+				case 'clear':
+					this._treeProvider.setSearchFilter('', false, false);
+					break;
+			}
+		});
+	}
+
+	private _getHtmlForWebview(webview: vscode.Webview) {
+		return `<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<style>
+				* {
+					box-sizing: border-box;
+					margin: 0;
+					padding: 0;
+				}
+				body {
+					padding: 8px;
+					font-family: var(--vscode-font-family);
+					font-size: var(--vscode-font-size);
+				}
+				.search-container {
+					display: flex;
+					align-items: center;
+					gap: 4px;
+				}
+				input {
+					flex: 1;
+					padding: 4px 8px;
+					background: var(--vscode-input-background);
+					color: var(--vscode-input-foreground);
+					border: 1px solid var(--vscode-input-border);
+					border-radius: 2px;
+					font-family: var(--vscode-font-family);
+					font-size: var(--vscode-font-size);
+				}
+				input:focus {
+					outline: 1px solid var(--vscode-focusBorder);
+					outline-offset: -1px;
+				}
+				input::placeholder {
+					color: var(--vscode-input-placeholderForeground);
+				}
+				button {
+					padding: 4px 8px;
+					background: var(--vscode-button-background);
+					color: var(--vscode-button-foreground);
+					border: none;
+					border-radius: 2px;
+					cursor: pointer;
+					font-size: 12px;
+				}
+				button:hover {
+					background: var(--vscode-button-hoverBackground);
+				}
+				button.clear {
+					background: transparent;
+					color: var(--vscode-foreground);
+					padding: 2px 6px;
+				}
+			</style>
+		</head>
+		<body>
+			<div class="search-container">
+				<input 
+					type="text" 
+					id="searchInput" 
+					placeholder="Search checkboxes... (supports regex)"
+					autocomplete="off"
+				/>
+				<button class="clear" id="clearButton" title="Clear search">✕</button>
+			</div>
+			<script>
+				const vscode = acquireVsCodeApi();
+				const input = document.getElementById('searchInput');
+				const clearButton = document.getElementById('clearButton');
+				
+				let timeout;
+				input.addEventListener('input', (e) => {
+					clearTimeout(timeout);
+					timeout = setTimeout(() => {
+						vscode.postMessage({
+							type: 'search',
+							value: e.target.value
+						});
+					}, 300);
+				});
+				
+				clearButton.addEventListener('click', () => {
+					input.value = '';
+					vscode.postMessage({
+						type: 'clear'
+					});
+				});
+				
+				// Focus input on load
+				input.focus();
+			</script>
+		</body>
+		</html>`;
+	}
+}
+
 class CheckboxCodeLensProvider implements vscode.CodeLensProvider {
 	private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
 	public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
@@ -407,6 +630,17 @@ export function activate(context: vscode.ExtensionContext) {
 	const diagnosticsCollection = vscode.languages.createDiagnosticCollection('checkbox-display');
 	context.subscriptions.push(diagnosticsCollection);
 
+	// Create checkbox tree provider first
+	const checkboxTreeProvider = new CheckboxTreeDataProvider();
+	const initialSort = vscode.workspace.getConfiguration('checkbox-display').get<string>('sortMode', 'Alphabetical') as 'Alphabetical' | 'Last Modified' | 'None';
+	checkboxTreeProvider.setSortMode(initialSort);
+
+	// Create WebView for search input
+	const searchInputProvider = new SearchInputViewProvider(context.extensionUri, checkboxTreeProvider);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider('checkbox-search-input', searchInputProvider)
+	);
+
 	checkedDecorationType = vscode.window.createTextEditorDecorationType({
 		before: {
 			contentText: '☑ ',
@@ -450,12 +684,6 @@ export function activate(context: vscode.ExtensionContext) {
 		context.subscriptions.push(decorType);
 	}
 
-	// Create Checkbox Explorer tree view
-	const checkboxTreeProvider = new CheckboxTreeDataProvider();
-		// Initialize sort mode from settings
-	const initialSort = vscode.workspace.getConfiguration('checkbox-display').get<string>('sortMode', 'Alphabetical') as 'Alphabetical' | 'Last Modified' | 'None';
-	checkboxTreeProvider.setSortMode(initialSort);
-	
 	// Command to change sort mode
 	const setSortModeCommand = vscode.commands.registerCommand('checkbox-display.setSortMode', async () => {
 		const choice = await vscode.window.showQuickPick(['Alphabetical', 'Last Modified', 'None'], { placeHolder: 'Select sort mode for Checkbox Explorer' });
@@ -465,11 +693,13 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(setSortModeCommand);
+	
 	const treeView = vscode.window.createTreeView('checkbox-explorer', {
 		treeDataProvider: checkboxTreeProvider,
 		showCollapseAll: true,
 		canSelectMany: false
 	});
+	checkboxTreeProvider.setTreeView(treeView);
 	context.subscriptions.push(treeView);
 
 	// Register command to go to checkbox
@@ -498,43 +728,69 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(toggleFromExplorerCommand);
 
-	// Add search functionality to tree view
+	// Legacy search command (now just focuses the input box)
 	const searchCommand = vscode.commands.registerCommand('checkbox-display.searchCheckboxes', async () => {
-		const query = await vscode.window.showInputBox({
-			placeHolder: 'Search checkboxes (supports regex with ^... syntax)',
-			prompt: 'Enter variable name to search'
-		});
-
-		if (query !== undefined) {
-			// Get search case sensitivity setting
-			const config = vscode.workspace.getConfiguration('checkbox-display');
-			const searchCaseSensitive = config.get<string>('searchCaseSensitive', 'Case Insensitive');
-			
-			let isCaseSensitive = searchCaseSensitive === 'Case Sensitive';
-			
-			// If set to "Prompt", ask the user
-			if (searchCaseSensitive === 'Prompt') {
-				const caseSensitiveChoice = await vscode.window.showQuickPick(
-					[{ label: 'Case Sensitive', picked: false }, { label: 'Case Insensitive', picked: true }],
-					{ placeHolder: 'Choose search mode' }
-				);
-				isCaseSensitive = caseSensitiveChoice?.label === 'Case Sensitive';
-			}
-			
-			const useRegex = query.startsWith('^') || query.includes('[');
-			
-			checkboxTreeProvider.setSearchFilter(query, isCaseSensitive, useRegex);
-			treeView.title = `Checkbox Explorer (${query})`;
-		}
+		// Focus on the checkbox container to show the input box
+		vscode.commands.executeCommand('workbench.view.extension.checkbox-container');
 	});
 	context.subscriptions.push(searchCommand);
 
-	// Clear search
+	// Toggle case sensitivity
+	const toggleCaseSensitiveCommand = vscode.commands.registerCommand('checkbox-display.toggleCaseSensitive', () => {
+		const newState = checkboxTreeProvider.toggleCaseSensitive();
+		vscode.window.showInformationMessage(`Search is now ${newState ? 'case sensitive' : 'case insensitive'}`);
+	});
+	context.subscriptions.push(toggleCaseSensitiveCommand);
+
+	// Sort commands
+	const sortAlphabeticalCommand = vscode.commands.registerCommand('checkbox-display.sortAlphabetical', () => {
+		checkboxTreeProvider.setSortMode('Alphabetical');
+		vscode.workspace.getConfiguration('checkbox-display').update('sortMode', 'Alphabetical', vscode.ConfigurationTarget.Global);
+	});
+	context.subscriptions.push(sortAlphabeticalCommand);
+
+	const sortLastModifiedCommand = vscode.commands.registerCommand('checkbox-display.sortLastModified', () => {
+		checkboxTreeProvider.setSortMode('Last Modified');
+		vscode.workspace.getConfiguration('checkbox-display').update('sortMode', 'Last Modified', vscode.ConfigurationTarget.Global);
+	});
+	context.subscriptions.push(sortLastModifiedCommand);
+
+	const sortNoneCommand = vscode.commands.registerCommand('checkbox-display.sortNone', () => {
+		checkboxTreeProvider.setSortMode('None');
+		vscode.workspace.getConfiguration('checkbox-display').update('sortMode', 'None', vscode.ConfigurationTarget.Global);
+	});
+	context.subscriptions.push(sortNoneCommand);
+
+	// Clear search command
 	const clearSearchCommand = vscode.commands.registerCommand('checkbox-display.clearSearch', () => {
 		checkboxTreeProvider.setSearchFilter('', false, false);
-		treeView.title = 'Checkbox Explorer';
 	});
 	context.subscriptions.push(clearSearchCommand);
+
+	// Expand all files in the tree
+	const expandAllCommand = vscode.commands.registerCommand('checkbox-display.expandAll', async () => {
+		try {
+			const files = await checkboxTreeProvider.getCheckboxFiles();
+			if (files && files.length > 0) {
+				let expandedCount = 0;
+				for (const file of files) {
+					try {
+						await treeView.reveal(file, { select: false, focus: false, expand: true });
+						expandedCount++;
+					} catch (error) {
+						console.log('Error revealing file:', error);
+					}
+				}
+				vscode.window.showInformationMessage(`Expanded ${expandedCount} file(s)`);
+			} else {
+				vscode.window.showInformationMessage('No files to expand');
+			}
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to expand files: ${error}`);
+			console.error('Expand all error:', error);
+		}
+	});
+	context.subscriptions.push(expandAllCommand);
 
 	// Command to refresh Checkbox Explorer
 	const refreshExplorerCommand = vscode.commands.registerCommand('checkbox-display.refreshExplorer', () => {
