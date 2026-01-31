@@ -31,6 +31,7 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 	private readonly FILE_CACHE_TTL = 10000;
 
 	private sortMode: 'Alphabetical' | 'Last Modified' | 'None' = 'Alphabetical';
+	private caseSensitive: boolean = false;
 
 	private refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private pendingRefreshFiles: Set<string> = new Set();
@@ -62,6 +63,19 @@ class CheckboxTreeDataProvider implements vscode.TreeDataProvider<CheckboxItem> 
 		this.sortMode = mode;
 		this.invalidateAllCaches();
 		this.refresh();
+	}
+
+	toggleCaseSensitive(): boolean {
+		this.caseSensitive = !this.caseSensitive;
+		// Reapply current search filter with new case sensitivity
+		if (this.searchFilter.query) {
+			this.setSearchFilter(this.searchFilter.query, this.caseSensitive, this.searchFilter.useRegex);
+		}
+		return this.caseSensitive;
+	}
+
+	getCaseSensitive(): boolean {
+		return this.caseSensitive;
 	}
 
 	private invalidateAllCaches() {
@@ -429,9 +443,7 @@ class SearchInputViewProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.onDidReceiveMessage(data => {
 			switch (data.type) {
 				case 'search':
-					const config = vscode.workspace.getConfiguration('checkbox-display');
-					const searchCaseSensitive = config.get<string>('searchCaseSensitive', 'Case Insensitive');
-					const isCaseSensitive = searchCaseSensitive === 'Case Sensitive';
+					const isCaseSensitive = this._treeProvider.getCaseSensitive();
 					const useRegex = data.value.startsWith('^') || data.value.includes('[');
 					this._treeProvider.setSearchFilter(data.value, isCaseSensitive, useRegex);
 					break;
@@ -700,6 +712,32 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.executeCommand('workbench.view.extension.checkbox-container');
 	});
 	context.subscriptions.push(searchCommand);
+
+	// Toggle case sensitivity
+	const toggleCaseSensitiveCommand = vscode.commands.registerCommand('checkbox-display.toggleCaseSensitive', () => {
+		const newState = checkboxTreeProvider.toggleCaseSensitive();
+		vscode.window.showInformationMessage(`Search is now ${newState ? 'case sensitive' : 'case insensitive'}`);
+	});
+	context.subscriptions.push(toggleCaseSensitiveCommand);
+
+	// Sort commands
+	const sortAlphabeticalCommand = vscode.commands.registerCommand('checkbox-display.sortAlphabetical', () => {
+		checkboxTreeProvider.setSortMode('Alphabetical');
+		vscode.workspace.getConfiguration('checkbox-display').update('sortMode', 'Alphabetical', vscode.ConfigurationTarget.Global);
+	});
+	context.subscriptions.push(sortAlphabeticalCommand);
+
+	const sortLastModifiedCommand = vscode.commands.registerCommand('checkbox-display.sortLastModified', () => {
+		checkboxTreeProvider.setSortMode('Last Modified');
+		vscode.workspace.getConfiguration('checkbox-display').update('sortMode', 'Last Modified', vscode.ConfigurationTarget.Global);
+	});
+	context.subscriptions.push(sortLastModifiedCommand);
+
+	const sortNoneCommand = vscode.commands.registerCommand('checkbox-display.sortNone', () => {
+		checkboxTreeProvider.setSortMode('None');
+		vscode.workspace.getConfiguration('checkbox-display').update('sortMode', 'None', vscode.ConfigurationTarget.Global);
+	});
+	context.subscriptions.push(sortNoneCommand);
 
 	// Clear search command
 	const clearSearchCommand = vscode.commands.registerCommand('checkbox-display.clearSearch', () => {

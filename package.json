@@ -2,7 +2,7 @@
   "name": "checkbox-display",
   "displayName": "Checkbox Display",
   "description": "Display interactive checkboxes in VS Code editor",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -45,6 +45,23 @@
         "icon": "$(search)"
       },
       {
+        "command": "checkbox-display.toggleCaseSensitive",
+        "title": "Toggle Case Sensitivity",
+        "icon": "$(case-sensitive)"
+      },
+      {
+        "command": "checkbox-display.sortAlphabetical",
+        "title": "Sort Alphabetically"
+      },
+      {
+        "command": "checkbox-display.sortLastModified",
+        "title": "Sort by Last Modified"
+      },
+      {
+        "command": "checkbox-display.sortNone",
+        "title": "No Sorting"
+      },
+      {
         "command": "checkbox-display.clearSearch",
         "title": "Clear Search",
         "icon": "$(close)"
@@ -55,17 +72,43 @@
         "icon": "$(refresh)"
       }
     ],
+    "submenus": [
+      {
+        "id": "checkbox-display.sortMenu",
+        "label": "Sort By",
+        "icon": "$(filter)"
+      }
+    ],
     "menus": {
       "view/title": [
         {
-          "command": "checkbox-display.clearSearch",
-          "group": "navigation",
+          "command": "checkbox-display.toggleCaseSensitive",
+          "group": "navigation@1",
+          "when": "view == checkbox-explorer"
+        },
+        {
+          "submenu": "checkbox-display.sortMenu",
+          "group": "navigation@2",
           "when": "view == checkbox-explorer"
         },
         {
           "command": "checkbox-display.refreshExplorer",
-          "group": "navigation",
+          "group": "navigation@3",
           "when": "view == checkbox-explorer"
+        }
+      ],
+      "checkbox-display.sortMenu": [
+        {
+          "command": "checkbox-display.sortAlphabetical",
+          "group": "sort@1"
+        },
+        {
+          "command": "checkbox-display.sortLastModified",
+          "group": "sort@2"
+        },
+        {
+          "command": "checkbox-display.sortNone",
+          "group": "sort@3"
         }
       ]
     },
